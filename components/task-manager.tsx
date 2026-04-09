@@ -1,126 +1,154 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Task } from '@/types';
+import { useState, useEffect, useCallback } from 'react';
+import { Task, FilterType } from '@/types';
 import { TaskForm } from './task-form';
 import { TaskList } from './task-list';
 import { FilterTabs } from './filter-tabs';
 import { toast } from 'sonner';
 
-export type FilterType = 'All' | 'Pending' | 'Completed';
-
+/**
+ * Root orchestrator for the task manager.
+ * All API calls live here so child components stay presentational.
+ * We use optimistic updates for toggle and delete to keep the UI
+ * feeling instant — if the server rejects, we roll back and notify.
+ */
 export function TaskManager() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState<FilterType>('All');
+  const [filter, setFilter] = useState<FilterType>('all');
 
-  useEffect(() => {
-    fetchTasks();
-  }, []);
-
-  const fetchTasks = async () => {
+  // Fetch all tasks on mount
+  const fetchTasks = useCallback(async () => {
     try {
-      const response = await fetch('/api/tasks');
-      if (!response.ok) throw new Error('Failed to fetch tasks');
-      const data = await response.json();
-      setTasks(data);
-    } catch (error) {
-      toast.error('Failed to load tasks');
+      const res = await fetch('/api/tasks');
+      if (!res.ok) throw new Error();
+      setTasks(await res.json());
+    } catch {
+      toast.error('Could not load your tasks. Please refresh the page.');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  //Add a task
   const addTask = async (title: string) => {
     try {
-      const response = await fetch('/api/tasks', {
+      const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
       });
-      if (!response.ok) throw new Error('Failed to add task');
-      const newTask = await response.json();
-      setTasks([newTask, ...tasks]);
-      toast.success('Task added successfully');
-    } catch (error) {
-      toast.error('Failed to add task');
+      if (!res.ok) throw new Error();
+
+      const created: Task = await res.json();
+      setTasks((prev) => [created, ...prev]);
+      toast.success(`"${created.title}" added to your list!`);
+    } catch {
+      toast.error('Failed to add the task. Please try again.');
     }
   };
 
+  //Toggle completion
   const toggleTask = async (id: string, completed: boolean) => {
-    // Optimistic update
-    setTasks(tasks.map((t) => (t.id === id ? { ...t, completed } : t)));
-    
+    // Immediately reflect the change in the UI
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed } : t)));
+
     try {
-      const response = await fetch(`/api/tasks/${id}`, {
+      const res = await fetch(`/api/tasks/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ completed }),
       });
-      if (!response.ok) throw new Error('Failed to update task');
-    } catch (error) {
-      // Revert on error
-      setTasks(tasks.map((t) => (t.id === id ? { ...t, completed: !completed } : t)));
-      toast.error('Failed to update task');
+      if (!res.ok) throw new Error();
+
+      toast.success(completed ? 'Nice work! Task completed.' : 'Task moved back to pending.');
+    } catch {
+      // Roll back on failure
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: !completed } : t)));
+      toast.error('Could not update the task status.');
     }
   };
 
+  //Delete a task (optimistic)
   const deleteTask = async (id: string) => {
-    const prevTasks = [...tasks];
-    // Optimistic update
-    setTasks(tasks.filter((t) => t.id !== id));
-    
+    const snapshot = [...tasks]; // Keep a snapshot for rollback
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+
     try {
-      const response = await fetch(`/api/tasks/${id}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error('Failed to delete task');
-      toast.success('Task deleted');
-    } catch (error) {
-      setTasks(prevTasks);
-      toast.error('Failed to delete task');
+      const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error();
+      toast.success('Task removed.');
+    } catch {
+      setTasks(snapshot);
+      toast.error('Could not delete the task. It has been restored.');
     }
   };
 
-  const editTask = async (id: string, title: string) => {
-    const prevTasks = [...tasks];
-    setTasks(tasks.map((t) => t.id === id ? { ...t, title } : t));
-    
+  // ── Edit task title (optimistic) ──────────────────────────────────
+  const editTask = async (id: string, newTitle: string) => {
+    const snapshot = [...tasks];
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, title: newTitle } : t)));
+
     try {
-      const response = await fetch(`/api/tasks/${id}`, {
+      const res = await fetch(`/api/tasks/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title }),
+        body: JSON.stringify({ title: newTitle }),
       });
-      if (!response.ok) throw new Error('Failed to edit task');
-      toast.success('Task updated');
-    } catch (error) {
-      setTasks(prevTasks);
-      toast.error('Failed to update task');
+      if (!res.ok) throw new Error();
+      toast.success('Task title updated.');
+    } catch {
+      setTasks(snapshot);
+      toast.error('Could not update the title. Change has been reverted.');
     }
+  };
+
+  // Derived data
+  const counts = {
+    all: tasks.length,
+    pending: tasks.filter((t) => !t.completed).length,
+    completed: tasks.filter((t) => t.completed).length,
   };
 
   const filteredTasks = tasks.filter((task) => {
-    if (filter === 'All') return true;
-    if (filter === 'Pending') return !task.completed;
-    if (filter === 'Completed') return task.completed;
+    if (filter === 'pending') return !task.completed;
+    if (filter === 'completed') return task.completed;
     return true;
   });
 
   return (
-    <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-200/50 dark:border-slate-800/50 p-5 sm:p-8 overflow-hidden transition-all duration-500 hover:shadow-cyan-500/5">
+    <section className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-slate-950/50 border border-slate-200/60 dark:border-slate-800/60 p-5 sm:p-8 transition-shadow duration-500">
       <TaskForm onAdd={addTask} />
-      <div className="mt-10 mb-6 flex flex-col sm:flex-row gap-4 justify-between items-center bg-slate-50/50 dark:bg-slate-800/50 p-2 rounded-2xl">
-        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 pl-4 tracking-tight">Your Tasks</h2>
-        <FilterTabs filter={filter} setFilter={setFilter} />
+
+      {/* Toolbar: section title + filter tabs */}
+      <div className="mt-8 mb-5 flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+          Your tasks
+          {!isLoading && (
+            <span className="ml-2 text-sm font-normal text-slate-400">
+              ({counts.all})
+            </span>
+          )}
+        </h2>
+        <FilterTabs
+          currentFilter={filter}
+          onFilterChange={setFilter}
+          counts={counts}
+        />
       </div>
-      <TaskList 
-        tasks={filteredTasks} 
-        isLoading={isLoading} 
+
+      <TaskList
+        tasks={filteredTasks}
+        isLoading={isLoading}
         onToggle={toggleTask}
         onDelete={deleteTask}
         onEdit={editTask}
       />
-    </div>
+    </section>
   );
 }

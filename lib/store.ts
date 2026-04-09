@@ -1,43 +1,60 @@
 import { Task } from '@/types';
 
-// Use a global variable to persist tasks across hot reloads in development
+/**
+ * In-memory task store.
+ *
+ * Trade-off: We use a Node.js global to survive Next.js hot-reloads during
+ * development. In production you'd swap this for a database, but for this
+ * exercise in-memory storage keeps the focus on API design and frontend polish.
+ */
 declare global {
-  var _tasks: Task[] | undefined;
+  // eslint-disable-next-line no-var
+  var _taskStore: Task[] | undefined;
 }
 
-export const getTasks = (): Task[] => {
-  if (!global._tasks) {
-    global._tasks = [];
+function getStore(): Task[] {
+  if (!global._taskStore) {
+    global._taskStore = [];
   }
-  return global._tasks;
-};
+  return global._taskStore;
+}
 
-export const setTasks = (tasks: Task[]) => {
-  global._tasks = tasks;
-};
+/** Return all tasks, newest first (insertion order is maintained by unshift). */
+export function getAllTasks(): Task[] {
+  return getStore();
+}
 
-export const addTask = (task: Task) => {
-  const tasks = getTasks();
-  tasks.unshift(task); // Prepend to keep newest first
-  setTasks(tasks);
-};
+/** Insert a new task at the front so the list is always sorted newest-first. */
+export function createTask(task: Task): void {
+  getStore().unshift(task);
+}
 
-export const updateTask = (id: string, updates: Partial<Task>): Task | null => {
-  let updatedTask: Task | null = null;
-  const tasks = getTasks();
+/**
+ * Partially update a task by id.
+ * Returns the updated task, or null if the id doesn't exist.
+ */
+export function patchTask(id: string, updates: Partial<Omit<Task, 'id'>>): Task | null {
+  const tasks = getStore();
   const index = tasks.findIndex((t) => t.id === id);
-  if (index !== -1) {
-    tasks[index] = { ...tasks[index], ...updates };
-    updatedTask = tasks[index];
-    setTasks(tasks);
-  }
-  return updatedTask;
-};
 
-export const deleteTask = (id: string): boolean => {
-  const tasks = getTasks();
-  const initialLength = tasks.length;
-  const filtered = tasks.filter((t) => t.id !== id);
-  setTasks(filtered);
-  return filtered.length < initialLength;
-};
+  if (index === -1) return null;
+
+  tasks[index] = { ...tasks[index], ...updates };
+  return tasks[index];
+}
+
+/**
+ * Remove a task by id.
+ * Returns true if a task was actually removed, false if id wasn't found.
+ */
+export function removeTask(id: string): boolean {
+  const tasks = getStore();
+  const before = tasks.length;
+  global._taskStore = tasks.filter((t) => t.id !== id);
+  return global._taskStore.length < before;
+}
+
+/** Reset the store — useful for testing. */
+export function resetStore(): void {
+  global._taskStore = [];
+}

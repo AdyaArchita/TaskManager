@@ -1,47 +1,65 @@
-import { getTasks, addTask, updateTask, deleteTask, setTasks } from '../lib/store';
+import {
+  getAllTasks,
+  createTask,
+  patchTask,
+  removeTask,
+  resetStore,
+} from '../lib/store';
 import { Task } from '../types';
 
-describe('Tasks Store', () => {
+/** Helper to build a task with sensible defaults */
+function buildTask(overrides: Partial<Task> = {}): Task {
+  return {
+    id: Math.random().toString(36).slice(2),
+    title: 'Test task',
+    completed: false,
+    createdAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+describe('In-memory task store', () => {
   beforeEach(() => {
-    // Reset the store before each test
-    setTasks([]);
+    resetStore(); // Ensure a clean slate between tests
   });
 
-  it('should start with an empty tasks list', () => {
-    const tasks = getTasks();
-    expect(tasks.length).toBe(0);
+  it('starts with an empty list', () => {
+    expect(getAllTasks()).toEqual([]);
   });
 
-  it('should add a task correctly and keep it at the top', () => {
-    const task1: Task = { id: '1', title: 'Task 1', completed: false, createdAt: new Date().toISOString() };
-    const task2: Task = { id: '2', title: 'Task 2', completed: false, createdAt: new Date().toISOString() };
-    
-    addTask(task1);
-    addTask(task2);
+  it('adds tasks in newest-first order', () => {
+    const first = buildTask({ id: '1', title: 'First' });
+    const second = buildTask({ id: '2', title: 'Second' });
 
-    const tasks = getTasks();
-    expect(tasks.length).toBe(2);
-    // Because store logic is unshift, task2 should be first
-    expect(tasks[0].id).toBe('2');
+    createTask(first);
+    createTask(second);
+
+    const tasks = getAllTasks();
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0].title).toBe('Second'); // Most recent is first
+    expect(tasks[1].title).toBe('First');
   });
 
-  it('should update a task', () => {
-    const task1: Task = { id: '1', title: 'Task 1', completed: false, createdAt: new Date().toISOString() };
-    addTask(task1);
+  it('patches a task and returns the updated version', () => {
+    const task = buildTask({ id: 'abc' });
+    createTask(task);
 
-    const updated = updateTask('1', { completed: true });
+    const updated = patchTask('abc', { completed: true });
     expect(updated?.completed).toBe(true);
-
-    const tasks = getTasks();
-    expect(tasks[0].completed).toBe(true);
+    expect(getAllTasks()[0].completed).toBe(true);
   });
 
-  it('should delete a task', () => {
-    const task1: Task = { id: '1', title: 'Task 1', completed: false, createdAt: new Date().toISOString() };
-    addTask(task1);
-    
-    const success = deleteTask('1');
-    expect(success).toBe(true);
-    expect(getTasks().length).toBe(0);
+  it('returns null when patching a non-existent task', () => {
+    expect(patchTask('does-not-exist', { title: 'nope' })).toBeNull();
+  });
+
+  it('removes a task and returns true', () => {
+    createTask(buildTask({ id: 'to-delete' }));
+    expect(removeTask('to-delete')).toBe(true);
+    expect(getAllTasks()).toHaveLength(0);
+  });
+
+  it('returns false when removing a non-existent task', () => {
+    expect(removeTask('ghost')).toBe(false);
   });
 });

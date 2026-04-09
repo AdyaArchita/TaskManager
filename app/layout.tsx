@@ -6,8 +6,9 @@ import { Toaster } from '@/components/ui/sonner';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Task Manager',
-  description: 'A beautiful task manager built with Next.js',
+  title: 'FocusFlow — Task Manager',
+  description:
+    'A minimal, focused task manager built with Next.js, TypeScript, and shadcn/ui.',
 };
 
 export default function RootLayout({
@@ -19,7 +20,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         {children}
-        <Toaster position="bottom-right" />
+        <Toaster position="bottom-right" richColors closeButton />
       </body>
     </html>
   );
