@@ -2,13 +2,12 @@ import { Task } from '@/types';
 
 /**
  * In-memory task store.
- *
  * Trade-off: We use a Node.js global to survive Next.js hot-reloads during
  * development. In production you'd swap this for a database, but for this
  * exercise in-memory storage keeps the focus on API design and frontend polish.
  */
 declare global {
-  // eslint-disable-next-line no-var
+  //eslint-disable-next-line no-var
   var _taskStore: Task[] | undefined;
 }
 
