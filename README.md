@@ -161,7 +161,3 @@ docker run -p 3000:3000 focusflow
 ├── Dockerfile               # Production container
 └── README.md
 ```
-
----
-
-Built with care for the Full Stack Developer Technical Assessment.
